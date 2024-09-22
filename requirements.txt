@@ -1,0 +1,6 @@
+flask
+requests
+python-dotenv
+pymongo[srv]
+alpaca-py
+nest-asyncio

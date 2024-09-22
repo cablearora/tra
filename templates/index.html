@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head class="crypt-dark">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quantified Ante - Trading Bot </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/bootstrap/css/bootstrap.min.css">
+    <link rel="shortcut icon" type="/image/png" href="static/images/favicon.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/icons.css">
+    <link rel="stylesheet" href="/static/css/ui.css">
+</head>
+
+<body class="crypt-dark">
+    <header>
+        <div class="container-full-width">
+            <div class="crypt-header">
+                <div class="row">
+                    <div class="col-xl-4 col-lg-4 col-md-4 col-sm-5">
+                        <div class="row">
+                            <div class="col-xs-2">
+                                <a href="index.html">
+                                <div class="crypt-logo"><img src="static/images/logo.png" alt="" style="width: 90px; height: auto;"></div>
+                            </div>
+                            
+                        </div>
+                    </div>
+                    <div class="col-xl-8 col-lg-8 col-md-8 d-none d-md-block d-lg-block">
+                        <ul class="crypt-heading-menu fright">
+                           
+                            <li><a href="market-overview.html">Overview</a></li>
+                            <li><a href="marketcap.html">Market Cap</a></li>
+                            <li><a href="trading.html">Trading</a></li>
+                            <li><a href="withdrawl.html">Wallet</a></li>
+                            <li class="crypt-box-menu menu-green"><a href="{{ url_for('login') }}">setting</a></li>
+                            <li class="crypt-box-menu menu-red"><a href="register.html">Login</a></li>
+                            
+                        </ul>
+                    </div><i class="menu-toggle pe-7s-menu d-xs-block d-sm-block d-md-none d-sm-none"></i></div>
+            </div>
+        </div>
+        <div class="crypt-mobile-menu">
+            <ul class="crypt-heading-menu">
+                <li class="active"><a href="#">Exchange</a></li>
+                <li><a href="#">Market Cap</a></li>
+                <li><a href="#">Trending</a></li>
+                <li><a href="#">Tools</a></li>
+                <li class="crypt-box-menu menu-green"><a href="{{ url_for('login') }}">setting</a></li>
+                <li class="crypt-box-menu menu-red"><a href="#">Login</a></li>
+                
+            </ul>
+        </div>
+    </header>
+    <div class="container-fluid">
+        <div class="row sm-gutters">
+            <div class="col-xl-5 text-center">
+                <div class="crypt-boxed-area">
+                    <h6 class="crypt-bg-head">
+                        <b class="crypt-up">BUY</b> / <b class="crypt-down">SELL</b>
+                    </h6>
+                    
+                    <!-- Start Button with Icon -->
+                    <div id="start-section">
+                        <button id="startButton" onclick="start_trade()"> 
+                            <img src="{{ url_for('static', filename='images/power-on.png') }}" alt="Start Automation" />
+                        </button>
+                        <p id="status-message">Automation is not started. Please click the Start button to initiate the trade.</p>
+                    </div>
+                    
+                    <div id="stop-section" style="display: none;">
+                        <button id="stopButton" onclick="stop_trade()"> 
+                            <img src="{{ url_for('static', filename='images/stop.png') }}" alt="Stop Automation" />
+                        </button>
+                        <p id="status-message-triggered">Automation is triggered.</p>
+                    </div>
+                </div>
+            </div>            
+            <div class="col-xl-7">
+                <div>
+                    <div class="crypt-market-status">
+                        <div>
+                            <ul class="nav nav-tabs">
+                                <li role="presentation"><a href="#active-orders" class="active" data-toggle="tab">Active Orders</a></li>
+                                <li role="presentation"><a href="#closed-orders" data-toggle="tab">Closed Orders</a></li>
+                                <li role="presentation"><a href="#balance" data-toggle="tab">Balance</a></li>
+                            </ul>
+                            <div class="tab-content">
+                                <div role="tabpanel" class="tab-pane active" id="active-orders">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Asset</th>
+                                                <th scope="col">Side</th>
+                                                <th scope="col">Type</th>
+                                                <th scope="col">Status</th>
+                                                <th scope="col">Quantity</th>
+                                                <th scope="col">Submitted</th>
+                                                <th scope="col">Filled At</th>
+                                            </tr>
+                                        </thead>
+                                        
+                                        <tbody>
+                                            {% if act_orders %}
+                                                {% for order in act_orders %}
+                                                    <tr>
+                                                        <td>{{ order.asset }}</td>
+                                                        <td>{{ order.side }}</td>
+                                                        <td>{{ order.type }}</td>
+                                                        <td>{{ order.status }}</td>
+                                                        <td>{{ order.quantity }}</td>
+                                                        <td>{{ order.submitted }}</td>
+                                                        <td>{{ order.filled_at }}</td>
+                                                    </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <div class="no-orders text-center p-160"><img src="static/images/empty.svg" alt="no-orders"></div>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                    
+                                </div>
+                                <div role="tabpanel" class="tab-pane" id="closed-orders">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Asset</th>
+                                                <th scope="col">Side</th>
+                                                <th scope="col">Type</th>
+                                                <th scope="col">Status</th>
+                                                <th scope="col">Quantity</th>
+                                                <th scope="col">Submitted</th>
+                                                <th scope="col">Filled At</th>
+                                            </tr>
+                                        </thead>
+                                        
+                                        <tbody>
+                                            {% if clos_orders %}
+                                                {% for order in clos_orders %}
+                                                    <tr>
+                                                        <td>{{ order.asset }}</td>
+                                                        <td>{{ order.side }}</td>
+                                                        <td>{{ order.type }}</td>
+                                                        <td>{{ order.status }}</td>
+                                                        <td>{{ order.quantity }}</td>
+                                                        <td>{{ order.submitted }}</td>
+                                                        <td>{{ order.filled_at }}</td>
+                                                    </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <div class="no-orders text-center p-160"><img src="static/images/empty.svg" alt="no-orders"></div>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div role="tabpanel" class="tab-pane" id="balance">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Timestamp</th>
+                                                <th scope="col">Equity</th>
+                                                <th scope="col">Profit/Loss</th>
+                                                <th scope="col">Profit/Loss (%)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% if balance_data %}
+                                                {% for balance in balance_data %}
+                                                    <tr>
+                                                        <td>{{ balance.timestamp }}</td>
+                                                        <td>{{ balance.equity }}</td>
+                                                        <td>{{ balance.profit_loss }}</td>
+                                                        <td>{{ balance.profit_loss_pct }}</td>
+                                                    </tr>
+                                                {% endfor %}
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="4" class="text-center">No balance data available</td>
+                                                </tr>
+                                            {% endif %}
+                                        </tbody>   
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/bundle.js"></script>  
+    <script>
+        function updateUI(isTrading) {
+            if (isTrading) {
+                document.getElementById("start-section").style.display = "none";
+                document.getElementById("stop-section").style.display = "block";
+            } else {
+                document.getElementById("start-section").style.display = "block";
+                document.getElementById("stop-section").style.display = "none";
+            }
+        }
+        
+        function start_trade() {
+            fetch('/start_trade', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateUI(true);
+                        document.getElementById("status-message").innerText = "Automation is triggered.";
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+        
+        function stop_trade() {
+            fetch('/stop_trade', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateUI(false);
+                        document.getElementById("status-message").innerText = "Automation is not started. Please click the Start button to initiate the trade.";
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+        </script>
+    
+    
+    <style>
+        .crypt-boxed-area img {
+            width: 400px; /* Adjust size as needed */
+            cursor: pointer;
+        }
+
+        #status-message, #status-message-triggered {
+            margin-top: 10px;
+            font-size: 14px;
+            color: gray;
+        }
+
+        .button-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px; /* Adjust this value as needed for uniform size */
+            border: 1px solid #ccc; /* Optional: Add border for better visibility */
+            margin: 10px; /* Optional: Add margin between sections */
+            padding: 20px; /* Optional: Add padding for better layout */
+        }
+        </style>
+</body>
+</html>
