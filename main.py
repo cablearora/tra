@@ -24,7 +24,7 @@ with open('config.json', 'r') as file:
 api_key = data['APCA-API-KEY-ID']
 api_secret = data['APCA-API-SECRET-KEY']
 
-mongo_uri = os.getenv('MONGO_URI')
+mongo_uri = os.getenv('MONGO_URI', )
 client = MongoClient(mongo_uri)
 db = client['user_db']
 users_collection = db['users']
@@ -256,5 +256,5 @@ def stop_trade():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=8050, host='0.0.0.0')
 
