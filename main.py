@@ -256,5 +256,5 @@ def stop_trade():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port = 8050, host='0.0.0.0')
+    app.run(debug=True, port = 8050, host='127.0.0.1')
 
