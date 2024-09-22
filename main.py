@@ -1,260 +1,221 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from utilities import *
 from pymongo import MongoClient
-import json, requests, os
+import json
+import requests
+import os
 from bson import ObjectId
-from threading import Event
+from threading import Event, Thread
 import datetime
 import time
 from alpaca.trading.client import TradingClient
+from utilities import TradingUtilities
+from logger import setup_logger  # Import your logger
 
-
-
-
+# Set up logger for TradingApp
+app_logger = setup_logger('TradingApp', 'logs/trading_app.log')
 
 class MongoEncoder(json.JSONEncoder):
     def default(self, obj):
+        """Encode MongoDB ObjectId to string."""
         if isinstance(obj, ObjectId):
             return str(obj)
-        return json.JSONEncoder.default(self, obj)
-    
-with open('config.json', 'r') as file:
-    data = json.load(file)
+        return super().default(obj)
 
-api_key = data['APCA-API-KEY-ID']
-api_secret = data['APCA-API-SECRET-KEY']
+class TradingApp:
+    """
+    A Flask web application for monitoring and executing trades using Alpaca API.
+    """
 
-mongo_uri = os.getenv('MONGO_URI', )
-client = MongoClient(mongo_uri)
-db = client['user_db']
-users_collection = db['users']
-broker_details = db['broker_details']
-webhooks_collection = db['webhook_data']
+    def __init__(self):
+        """Initializes the TradingApp by loading configurations, setting up database connections,
+        and initializing the Flask application.
+        """
+        self.app = Flask(__name__)
+        self.stop_event = Event()
 
+        # Load configuration
+        with open('config.json', 'r') as file:
+            self.data = json.load(file)
 
-trade_client = TradingClient(api_key, api_secret, paper=True, url_override=None)
-WEBHOOK_PASSPHRASE = "somelongstring123"
+        # Initialize MongoDB client
+        mongo_uri = os.getenv('MONGO_URI')
+        self.client = MongoClient(mongo_uri)
+        self.db = self.client['user_db']
+        self.webhooks_collection = self.db['webhook_data']
 
+        # Initialize Alpaca Trading Client
+        self.trade_client = TradingClient(self.data['APCA-API-KEY-ID'], self.data['APCA-API-SECRET-KEY'], paper=True)
 
-app = Flask(__name__)
-stop_event = Event()
+        # Setup routes
+        self.setup_routes()
 
-@app.route('/')
-def index():
-    activity_url = "https://paper-api.alpaca.markets/v2/account/activities?direction=desc&page_size=100"
-    
-    headers = {
-        "accept": "application/json",
-        "APCA-API-KEY-ID": api_key,
-        "APCA-API-SECRET-KEY": api_secret
-    }
+    def setup_routes(self):
+        """Set up Flask routes for the application."""
+        self.app.add_url_rule('/', 'index', self.index)
+        self.app.add_url_rule('/login', 'login', self.login, methods=['GET', 'POST'])
+        self.app.add_url_rule('/webhook', 'webhook', self.webhook, methods=['POST'])
+        self.app.add_url_rule('/start_trade', 'start_trade', self.start_trade, methods=['POST'])
+        self.app.add_url_rule('/stop_trade', 'stop_trade', self.stop_trade, methods=['POST'])
 
-    act_response = requests.get(activity_url, headers=headers)
+    def index(self):
+        """Render the index page with closed orders and balance data."""
+        activity_url = "https://paper-api.alpaca.markets/v2/account/activities?direction=desc&page_size=100"
+        headers = {
+            "accept": "application/json",
+            "APCA-API-KEY-ID": self.data['APCA-API-KEY-ID'],
+            "APCA-API-SECRET-KEY": self.data['APCA-API-SECRET-KEY']
+        }
 
-    if act_response.status_code == 200:
-        orders_data = act_response.json()
+        act_response = requests.get(activity_url, headers=headers)
         closed_orders = []
 
-        for order in orders_data:
-            if order['activity_type'] == 'FILL': 
-                closed_orders.append({
+        if act_response.status_code == 200:
+            orders_data = act_response.json()
+            closed_orders = [
+                {
                     'asset': order['symbol'],
                     'side': order['side'],
                     'type': order['type'],
                     'status': order['order_status'],
                     'quantity': order['qty'],
-                    'submitted': order['transaction_time'],  
-                    'filled_at': order['transaction_time']  
-                })
-    # Fetch portfolio history
-    portfolio_url = "https://paper-api.alpaca.markets/v2/account/portfolio/history"
-    portfolio_response = requests.get(portfolio_url, headers=headers)
-    balance_data = []
+                    'submitted': order['transaction_time'],
+                    'filled_at': order['transaction_time']
+                }
+                for order in orders_data if order['activity_type'] == 'FILL'
+            ]
+        else:
+            app_logger.error(f"Failed to retrieve activities: {act_response.text}")
 
-    if portfolio_response.status_code == 200:
-        portfolio_history = portfolio_response.json()
-        timestamps = portfolio_history['timestamp']
-        equities = portfolio_history['equity']
-        profits = portfolio_history['profit_loss']
-        profit_loss_pct = portfolio_history['profit_loss_pct']
+        # Fetch portfolio history
+        portfolio_url = "https://paper-api.alpaca.markets/v2/account/portfolio/history"
+        portfolio_response = requests.get(portfolio_url, headers=headers)
+        balance_data = []
 
-        for i in range(len(timestamps)):
-            balance_data.append({
-                'timestamp': datetime.datetime.fromtimestamp(timestamps[i]).strftime('%Y-%m-%d %H:%M:%S'),
-                'equity': equities[i],
-                'profit_loss': profits[i],
-                'profit_loss_pct': profit_loss_pct[i]
-            })
+        if portfolio_response.status_code == 200:
+            portfolio_history = portfolio_response.json()
+            timestamps = portfolio_history['timestamp']
+            equities = portfolio_history['equity']
+            profits = portfolio_history['profit_loss']
+            profit_loss_pct = portfolio_history['profit_loss_pct']
 
-        balance_data.reverse()
+            balance_data = [
+                {
+                    'timestamp': datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S'),
+                    'equity': eq,
+                    'profit_loss': pl,
+                    'profit_loss_pct': pl_pct
+                }
+                for ts, eq, pl, pl_pct in zip(timestamps, equities, profits, profit_loss_pct)
+            ]
+            balance_data.reverse()
+        else:
+            app_logger.error(f"Failed to retrieve portfolio history: {portfolio_response.text}")
 
+        return render_template('index.html', clos_orders=closed_orders, balance_data=balance_data)
 
+    def login(self):
+        """Handle user login and update trading preferences."""
+        if request.method == 'POST':
+            time_in_force = request.form.get('time_in_force')
+            order_type = request.form.get('order_type')
 
-    return render_template('index.html', clos_orders=closed_orders, balance_data=balance_data)
+            self.data["orderType"] = order_type
+            self.data["timeInForce"] = time_in_force
 
+            with open('config.json', 'w') as file:
+                json.dump(self.data, file, indent=4)
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        # Handle login logic here (e.g., verify credentials)
-        time_in_force = request.form.get('time_in_force')
-        order_type = request.form.get('order_type')
+            app_logger.info("Updated trading preferences.")
+            return redirect(url_for('index'))
+        return render_template('login.html')
 
-        data["orderType"] =  order_type
-        data["timeInForce"]=  time_in_force
-        
+    def webhook(self):
+        """Receive and process webhook messages."""
+        webhook_message = json.loads(request.data)
 
-        with open('config.json', 'w') as file:
-            json.dump(data, file, indent=4)
+        if webhook_message['passphrase'] != "somelongstring123":
+            return {'code': 'error', 'message': 'Unauthorized'}, 403
 
-        # print(f"Time In Force: {time_in_force}, Order Type: {order_type}")
+        try:
+            self.webhooks_collection.insert_one(webhook_message)
+            app_logger.info("Webhook message received and processed.")
+        except Exception as e:
+            app_logger.error(f"Failed to insert webhook message: {e}")
+            return jsonify({'code': 'error', 'message': str(e)}), 500
 
-        return redirect(url_for('index'))
-    return render_template('login.html')  # Show the login form for GET requests
-  
+        response = json.dumps(webhook_message, cls=MongoEncoder)
+        return response
 
+    def monitor_and_trade(self):
+        """Monitor signals and execute trades based on received signals."""
+        current_positions = {}
 
-# Webhook Listener
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    webhook_message = json.loads(request.data)
+        try:
+            while not self.stop_event.is_set():
+                signals = list(self.webhooks_collection.find().sort([('_id', -1)]).limit(10))
+                for signal in signals:
+                    signal_id = signal['_id']
+                    symbol = signal['ticker']
+                    action = signal['strategy']['order_action']
+                    order_price = signal['strategy']['order_price']
 
-    print(webhook_message)
-    
-
-    if webhook_message['passphrase'] != WEBHOOK_PASSPHRASE:
-        return {'code': 'error', 'message': 'nice try buddy'}, 403
-        
-    try:
-        webhooks_collection.insert_one(webhook_message)
-    except Exception as e:
-        return jsonify({'code': 'error', 'message': str(e)}), 500
-    
-    response = json.dumps(webhook_message, cls=MongoEncoder)
-    return response
-
-
-
-# Function to monitor and execute trades based on signals
-def monitor_and_trade():
-    global latest_processed_signal, processed_signals
-    current_positions = {} 
-
-    try:
-        while not stop_event.is_set():
-
-            signals = list(webhooks_collection.find().sort([('_id', -1)]).limit(10))
-            print(f"this is the signal:-    {signals}")
-            for signal in signals:
-                signal_id = signal['_id']
-                symbol = signal['ticker']
-                action = signal['strategy']['order_action']
-                order_price = signal['strategy']['order_price']
-
-                if signal_id in processed_signals:
-                    continue  
-            
-
-                # Process buy signals
-                if action == 'buy':
-                    
-                    try:
-                        open_orders = get_open_position(symbol)
-                    except Exception as e:
-                        error_message = str(e)
-                        if error_message:
-                            print(f"No open position exists for {symbol}, proceeding with signal.")
-                            open_orders = None  
-                        else:
-                            if open_orders.side.value == 'short':
-                                close_position(symbol)
-                            print(f"An error occurred while retrieving the open position for {symbol}: {error_message}")
+                    # Process buy signals
+                    if action == 'buy':
+                        qty = TradingUtilities().determine_position_size(symbol, order_price)
+                        if qty is None or qty <= 0:
+                            app_logger.warning(f"Invalid position size for buying {symbol}. Skipping.")
                             continue
 
-                    # if open_orders:
-                    #     print(f"Skipping buy signal for {symbol} as an order is already open.")
-                    #     continue
-                    
-                    qty = determine_position_size(symbol, order_price)
-                    if qty is None or qty <= 0:
-                        print(f"Invalid position size for buying {symbol}. Skipping.")
-                        continue
+                        order_type = self.data["orderType"]
+                        time_in_force = TradingUtilities().get_time_in_force(self.data["timeInForce"])
+                        req = TradingUtilities().create_order_request(order_type, symbol, qty, 'buy', time_in_force, order_price)
+                        res = self.trade_client.submit_order(req)
+                        current_positions[symbol] = 'long'
+                        app_logger.info(f"Executed buy order for {symbol} with quantity {qty}.")
 
-                    order_type = data["orderType"]
-                    time_in_force = data["timeInForce"]
-                    time_in_force = get_time_in_force(time_in_force)
-
-                    
-                    req = create_order_request(order_type, symbol, qty, 'buy', time_in_force, order_price)
-                    res = trade_client.submit_order(req)
-
-                    current_positions[symbol] = 'long'
-                    print(f"Executed buy order for {symbol} with quantity {qty}.")
-
-
-                # Process sell signals
-                elif action == 'sell':
-
-                    try:
-                        open_orders = get_open_position(symbol)
-                    except Exception as e:
-                        error_message = str(e)
-                        if error_message:
-                            print(f"No open position exists for {symbol}, proceeding with signal.")
-                            open_orders = None  
-                        else:
-                            if open_orders.side.value == 'long':
-                                close_position(symbol)
-                            print(f"An error occurred while retrieving the open position for {symbol}: {error_message}")
+                    # Process sell signals
+                    elif action == 'sell':
+                        qty = TradingUtilities().determine_position_size(symbol, order_price)
+                        if qty is None or qty <= 0:
+                            app_logger.warning(f"Invalid position size for selling {symbol}. Skipping.")
                             continue
 
-                    # if open_orders:
-                    #     print(f"Skipping sell signal for {symbol} as an order is already open.")
-                    #     continue
+                        order_type = self.data["orderType"]
+                        time_in_force = TradingUtilities().get_time_in_force(self.data["timeInForce"])
+                        req = TradingUtilities().create_order_request(order_type, symbol, qty, 'sell', time_in_force, order_price)
+                        res = self.trade_client.submit_order(req)
+                        current_positions[symbol] = 'short'
+                        app_logger.info(f"Executed sell order for {symbol} with quantity {qty}.")
 
+                    # After processing, delete the signal from the database
+                    self.webhooks_collection.delete_one({'_id': signal['_id']})
 
-                    order_type = data["orderType"]
-                    time_in_force = data["timeInForce"]
-                    time_in_force = get_time_in_force(time_in_force)
-                    qty = determine_position_size(symbol, order_price)
-                    if qty is None or qty <= 0:
-                        print(f"Invalid position size for buying {symbol}. Skipping.")
-                        continue
+                time.sleep(1)
 
-                    req = create_order_request(order_type, symbol, qty, 'sell', time_in_force, order_price)
-                    res = trade_client.submit_order(req)
+        except Exception as e:
+            app_logger.error(f"An error occurred while monitoring signals: {e}")
+            time.sleep(2)
 
-                    current_positions[symbol] = 'short'
-                    print(f"Executed sell order for {symbol} with quantity {qty}.")
+    def start_trade(self):
+        """Start the trading thread to monitor and execute trades."""
+        if self.stop_event.is_set():
+            self.stop_event.clear()
+        trade_thread = Thread(target=self.monitor_and_trade)
+        trade_thread.start()
+        app_logger.info("Trade monitoring started.")
+        return jsonify({'status': 'success', 'message': 'Trade monitoring started'}), 200
 
-                # After processing, you might want to remove the signal from the database
-                webhooks_collection.delete_one({'_id': signal['_id']})
+    def stop_trade(self):
+        """Stop the trading thread and close all positions."""
+        self.trade_client.close_all_positions()
+        self.stop_event.set()
+        app_logger.info("Trade monitoring stopped.")
+        return jsonify({'status': 'success', 'message': 'Trade monitoring stopped'}), 200
 
-            time.sleep(1)
-
-    except Exception as e:
-        print(f"An error occurred while monitoring signals: {e}")
-        time.sleep(2) 
-
-@app.route('/start_trade', methods=['POST'])
-def start_trade():
-    global stop_event
-    webhooks_collection.delete_many({})
-    if stop_event.is_set():
-        stop_event.clear()
-    trade_thread = Thread(target=monitor_and_trade)
-    trade_thread.start()
-    return jsonify({'status': 'success', 'message': 'Trade monitoring started'}), 200
-
-@app.route('/stop_trade', methods=['POST'])
-def stop_trade():
-    global stop_event
-    webhooks_collection.delete_many({})
-    trade_client.close_all_positions()
-    stop_event.set()
-    return jsonify({'status': 'success', 'message': 'Trade monitoring stopped'}), 200
-
+    def run(self):
+        """Run the Flask application."""
+        self.app.run(debug=True)
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
+    trading_app = TradingApp()
+    trading_app.run()
