@@ -42,6 +42,7 @@ class TradingApp:
         self.client = MongoClient(mongo_uri)
         self.db = self.client['user_db']
         self.webhooks_collection = self.db['webhook_data']
+        app_logger.info(f'Starting webhook: {self.webhooks_collection}')
 
         # Initialize Alpaca Trading Client
         self.trade_client = TradingClient(self.data['APCA-API-KEY-ID'], self.data['APCA-API-SECRET-KEY'], paper=True)
@@ -132,6 +133,7 @@ class TradingApp:
     def webhook(self):
         """Receive and process webhook messages."""
         webhook_message = json.loads(request.data)
+        app_logger.info(f"Received webhook message: {webhook_message}")
 
         if webhook_message['passphrase'] != "somelongstring123":
             return {'code': 'error', 'message': 'Unauthorized'}, 403
