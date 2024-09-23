@@ -1,3 +1,5 @@
 2024-09-22 23:52:59,025 - TradingApp - INFO - Trade monitoring started.
 2024-09-22 23:53:05,730 - TradingApp - INFO - Webhook message received and processed.
 2024-09-22 23:53:07,803 - TradingApp - INFO - Executed buy order for NVDA with quantity 100.
+2024-09-23 09:43:25,082 - TradingApp - INFO - Trade monitoring started.
+2024-09-23 09:43:27,155 - TradingApp - INFO - Trade monitoring stopped.
