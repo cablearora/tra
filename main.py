@@ -214,7 +214,7 @@ class TradingApp:
 
     def run(self):
         """Run the Flask application."""
-        self.app.run(debug=True, host='127.0.0.1', port=10000)
+        self.app.run(debug=True, host='0.0.0.0', port=5432)
 
 if __name__ == '__main__':
     trading_app = TradingApp()

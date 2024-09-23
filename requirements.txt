@@ -4,3 +4,4 @@ python-dotenv
 pymongo[srv]
 alpaca-py
 nest-asyncio
+gunicorn
