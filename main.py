@@ -38,7 +38,7 @@ class TradingApp:
             self.data = json.load(file)
 
         # Initialize MongoDB client
-        mongo_uri = os.getenv('MONGO_URI')
+        mongo_uri = "mongodb+srv://QuantifiedAnte:gannon123321@cluster0.mkl2h.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
         self.client = MongoClient(mongo_uri)
         self.db = self.client['user_db']
         self.webhooks_collection = self.db['webhook_data']
